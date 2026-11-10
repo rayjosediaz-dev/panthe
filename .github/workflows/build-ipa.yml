@@ -1,0 +1,50 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master, Principal ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build unsigned .app
+        run: |
+          PROJECT=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
+          if [ -z "$PROJECT" ]; then
+            echo "Error: No se encontró ningún archivo .xcodeproj"
+            exit 1
+          fi
+          SCHEME=$(xcodebuild -list -project "$PROJECT" | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+          
+          echo "Compilando: $PROJECT con esquema: $SCHEME"
+          
+          xcodebuild clean build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r app-unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: app-unsigned.ipa
